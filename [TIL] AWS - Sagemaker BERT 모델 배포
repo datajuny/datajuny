@@ -1,0 +1,181 @@
+[Torch]
+
+waht is state_dict?
+
+- 파이썬 dict 객체로 각각의 레이어의 학습가능한 파라미터를 볼 수 있다.
+
+- 학습가능한 파라미터는 model.parameters()로 접근가능하다.
+
+- Optimizer 객체 역시 state_dict를 가지고 있다. 
+
+(*torch.optim으로 optimizer's state와 사용된 하이퍼파라미터 조회 가능 )
+
+# Initialize model
+model = TheModelClass()
+
+# Initialize optimizer
+optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+
+# Print model's state_dict
+print("Model's state_dict:")
+for param_tensor in model.state_dict():
+    print(param_tensor, "\t", model.state_dict()[param_tensor].size())
+
+# Print optimizer's state_dict
+print("Optimizer's state_dict:")
+for var_name in optimizer.state_dict():
+    print(var_name, "\t", optimizer.state_dict()[var_name])
+[pytorch saved & load model]
+
+1. Saved/Load stated_dict (추천)
+
+- 학습 가능한 파라미터만 저장한다. 해당 방법을 추천하는 이유는 전이학습(transfer learing)이 가능하기 때문
+
+- 토치는 .pt / .pth 확장자로 저장한다.
+
+- model.eval() 로 dropout과 normalization을 평가모드로 변경해야 한다.
+
+PATH = 'V2_model_0302.pt'
+# Save
+torch.save(model.state_dict(), PATH)
+# Load
+model = ModelClass(*args, **kwargs)
+model.load_state_dict(PATH))
+model.eval()
+*역직렬화(Deserialization)는? 
+
+직렬화된 파일 등을 역으로 직렬화하여 다시 객체의 형태로 만드는 것을 의미한다.
+
+​
+
+2. Save/Load Entire Model(비추천)
+
+- 모델과 학습 파라미터를 모두 저장한다.
+
+- 직관적(intuitive)인 저장방법이다.
+
+- 파이썬 pickle module을 사용하여 전체 모듈을 저장한다.
+
+- 이 방법의 단점은 serialized 되어 특정 클래스와 디렉토리에 종속된다. -> 피클은 model class를 함께 저장하지 않는다. 따라서 코드가 돌아가지 않는 다양한 사유가 된다.
+
+ 
+
+PATH = 'Save/Load Entire Model'
+# Save
+torch.save(model, PATH)
+# Load
+# model이 함께 저장되어 있어도 모델 class는 반드시 선언 되어 있어야 한다.
+model = torch.load(PATH)
+model.eval()
+3. Saving & Loading a General Checkpoint for Inference and/or Resuming Training
+
+- general checkpoint를 저장할때는 추론 혹은 학습을 재개할때 사용한다.
+
+- 주의해야할 점은 optimizer's state_dict도 저장되야 한다는 것이다.
+
+- 수행했던 에폭 수와 최근 training loss, 외부의 torch.nn.embedding layer도 저장되야한다.
+
+- 다양한 컴포넌트들의 저장은 dict 로 한다. torch.save()가 serialize(직렬화) 해준다. 
+
+# save
+torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': loss,
+            ...
+            }, PATH)
+
+# load
+model = TheModelClass(*args, **kwargs)
+optimizer = TheOptimizerClass(*args, **kwargs)
+
+checkpoint = torch.load(PATH)
+model.load_state_dict(checkpoint['model_state_dict'])
+optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+epoch = checkpoint['epoch']
+loss = checkpoint['loss']
+
+model.eval()
+# - or -
+model.train()
+torch BERT - 인퍼런스 코드
+
+첫번째 방법 - huggingface - Transformers 기술문서 Inference 방법
+
+input_false = "업무로서는 실수였지만 처리 과정에서는 완벽함으로 이끈 결과를 만들었습니다. 새로운 표준을 만들겠습니다 스타벅스 백화점 본점의 오픈 멤버로서 참여하였습니다."
+
+tokenized_text = tok.basic_tokenizer(input_false)
+indexed_token = tok.convert_tokens_to_ids(tokenized_text)
+token_tensor = torch.tensor([indexed_token])
+
+segments_tensors = torch.zeros(len(indexed_token))
+segments_tensors = segments_tensors.reshape(1, -1)
+
+valid_length = torch.tensor(len(indexed_token))
+valid_length = valid_length.reshape(1, -1)
+
+tokens_tensor = token_tensor.to('cpu')
+segments_tensors = segments_tensors.to('cpu')
+valid_length = valid_length.to('cpu')
+
+with torch.no_grad():
+    outputs = model(tokens_tensor, valid_length, segments_tensors)
+
+np.array(torch.argmax(outputs))
+두번째 방법 - skt BERT inference 방법
+
+​
+
+- infer_tensor.long().to('cpu') : 인퍼런스 전 컴파일할때, long() type으로 반드시 변경해야 한다.
+
+# infer할 text는 리스트 차원에 주의한다. 
+# 모델에 batch로 들어가기 때문에 한줄이라도 차원을 맞춰줘야한다. [1, length]
+text =  [['업무로서는 실수였지만 처리 과정에서는 완벽함으로 이끈 결과를 만들었습니다. 새로운 표준을 만들겠습니다 스타벅스 백화점 본점의 오픈 멤버로서 참여하였습니다.']]
+
+# nlp.data.BERTSentenceTransform를 사용해서 토크나이징 해야 학습된 단어장에 맞춰서 [토크나이징+토큰 인덱스] 변환이 된다.
+import gluonnlp as nlp
+
+bertmodel, vocab = get_pytorch_kobert_model(device)
+
+tokenizer = get_tokenizer()
+tok = nlp.data.BERTSPTokenizer(tokenizer, vocab, lower=False)
+
+class BERTDataset_infer(Dataset):
+
+    def __init__(self,
+                 dataset,
+                 sent_idx,
+                 bert_tokenizer,
+                 max_len,
+                 pad,
+                 pair):
+        
+        transform = nlp.data.BERTSentenceTransform(
+            bert_tokenizer, 
+            max_seq_length = max_len, 
+            pad = pad, 
+            pair = pair)
+
+        self.sentences = [transform([i[sent_idx]]) for i in dataset]
+
+    def __getitem__(self, i):
+        return (self.sentences[i])
+
+infer_data = BERTDataset_infer(text, 0, tok, max_len, True, False)
+
+segments_tensors = torch.zeros(len(infer_tensor[0]))
+segments_tensors = segments_tensors.reshape(1, -1)
+
+valid_length = torch.tensor(len(infer_tensor[0]))
+valid_length = valid_length.reshape(1, -1)
+
+# long() type을 지정하지 않으면 에러가 난다.
+infer_tensor = infer_tensor.long().to('cpu')
+segments_tensors = segments_tensors.long().to('cpu')
+valid_length = valid_length.long().to('cpu')
+
+with torch.no_grad():
+    outputs = model(infer_tensor, valid_length, segments_tensors)
+
+torch.argmax(outputs)
