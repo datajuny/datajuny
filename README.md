@@ -1,3 +1,3 @@
 # Initial page
 
-<h1> 안녕 </h1>
+<h1> TIL of Datajuny - Today I Learned</h1>
