@@ -1,3 +1,3 @@
-# 반갑습니다.
+# Deep Learning & NLP & Data Science
 
 <h1> TIL of Datajuny - Today I Learned</h1>
